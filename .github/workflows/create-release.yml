@@ -29,6 +29,9 @@ jobs:
       - name: Create Bot Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          TITLE: ${{ inputs.title }}
+          NOTES: ${{ inputs.notes }}
         run: |
-          printf "%s\n" "${{ inputs.notes }}" > /tmp/notes.md
-          gh release create "${{ inputs.tag }}" --title "${{ inputs.title }}" --notes-file /tmp/notes.md
+          echo "$NOTES" > /tmp/notes.md
+          gh release create "$TAG" --title "$TITLE" --notes-file /tmp/notes.md
