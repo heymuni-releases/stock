@@ -1,0 +1,72 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        default: "v0.1.0.61"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          repository: kangchals/auto
+          token: ${{ secrets.SOURCE_ACCESS_TOKEN }}
+          ref: main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Stamp build version
+        shell: pwsh
+        run: |
+          $ver = "${{ inputs.tag }}".TrimStart('v')
+          (Get-Content src/stock_auto/__init__.py) -replace '__version__ = ".*"', "__version__ = `"$ver`"" | Set-Content src/stock_auto/__init__.py
+          Get-Content src/stock_auto/__init__.py
+
+      - name: Build and smoke-test portable app
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Secure
+
+      - name: Upload Windows asset to Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          $zipPath = "dist/StockAuto-windows-x64.zip"
+          $zip = Get-Item $zipPath
+          $sha = (Get-FileHash -Path $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          $size = $zip.Length
+          Write-Host "Built Windows Zip: $size bytes, SHA256: $sha"
+
+          # Upload with clobber
+          gh release upload "$tag" "$zipPath" --repo heymuni-releases/stock --clobber
+
+          # Download and update release-manifest.json
+          gh release download "$tag" -p "release-manifest.json" --repo heymuni-releases/stock --clobber
+          $manifest = Get-Content "release-manifest.json" | ConvertFrom-Json
+          if (-not $manifest.assets) {
+              $manifest | Add-Member -MemberType NoteProperty -Name "assets" -Value ([PSCustomObject]@{})
+          }
+          $manifest.assets."windows-x64" = [PSCustomObject]@{
+              name = "StockAuto-windows-x64.zip"
+              sha256 = $sha
+              size = $size
+          }
+          $manifestJson = $manifest | ConvertTo-Json -Depth 5
+          Set-Content -Path "release-manifest.json" -Value $manifestJson
+          gh release upload "$tag" "release-manifest.json" --repo heymuni-releases/stock --clobber
+          Write-Host "Updated release manifest for $tag successfully"
