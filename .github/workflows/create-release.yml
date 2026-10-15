@@ -1,0 +1,30 @@
+name: Create Release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+      title:
+        required: true
+        type: string
+      notes:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat << 'NOTES_EOF' > /tmp/notes.md
+${{ inputs.notes }}
+NOTES_EOF
+          gh release create "${{ inputs.tag }}" --title "${{ inputs.title }}" --notes-file /tmp/notes.md
