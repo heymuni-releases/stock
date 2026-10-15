@@ -3,14 +3,20 @@ on:
   workflow_dispatch:
     inputs:
       tag:
+        description: "Release tag"
         required: true
         type: string
+        default: "v0.1.0.61"
       title:
+        description: "Release title"
         required: true
         type: string
+        default: "StockAuto v0.1.0.61"
       notes:
+        description: "Release notes"
         required: true
         type: string
+        default: "StockAuto 최신 빌드"
 
 permissions:
   contents: write
@@ -20,11 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create Release
+      - name: Create Bot Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cat << 'NOTES_EOF' > /tmp/notes.md
-${{ inputs.notes }}
-NOTES_EOF
+          printf "%s\n" "${{ inputs.notes }}" > /tmp/notes.md
           gh release create "${{ inputs.tag }}" --title "${{ inputs.title }}" --notes-file /tmp/notes.md
