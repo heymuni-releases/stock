@@ -61,11 +61,12 @@ jobs:
           if (-not $manifest.assets) {
               $manifest | Add-Member -MemberType NoteProperty -Name "assets" -Value ([PSCustomObject]@{})
           }
-          $manifest.assets."windows-x64" = [PSCustomObject]@{
+          $winObj = [PSCustomObject]@{
               name = "StockAuto-windows-x64.zip"
               sha256 = $sha
               size = $size
           }
+          $manifest.assets | Add-Member -MemberType NoteProperty -Name "windows-x64" -Value $winObj -Force
           $manifestJson = $manifest | ConvertTo-Json -Depth 5
           Set-Content -Path "release-manifest.json" -Value $manifestJson
           gh release upload "$tag" "release-manifest.json" --repo heymuni-releases/stock --clobber
