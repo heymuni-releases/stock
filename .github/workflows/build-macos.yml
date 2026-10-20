@@ -1,0 +1,146 @@
+name: Build macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        type: string
+      source_ref:
+        description: Private source commit
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      SOURCE_ACCOUNT: ${{ secrets.SOURCE_ACCOUNT }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check out source code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.SOURCE_REPOSITORY }}
+          token: ${{ secrets.SOURCE_ACCESS_TOKEN }}
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Verify architecture and bot draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test "$(uname -m)" = arm64
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          tag = os.environ["RELEASE_TAG"]
+          if re.fullmatch(r"v\d+(?:\.\d+){2,3}", tag) is None:
+              raise SystemExit("Expected a stable numeric release tag")
+          pages = json.loads(subprocess.check_output([
+              "gh", "api", "--paginate", "--slurp",
+              "repos/heymuni-releases/stock/releases?per_page=100",
+          ], text=True))
+          release = next((r for page in pages for r in page if r["tag_name"] == tag), None)
+          if release is None or not release["draft"] or release["author"]["login"] != "github-actions[bot]":
+              raise SystemExit("Expected an unpublished Actions-bot release")
+          PY
+
+      - name: Stamp build version
+        run: uv run python scripts/ci_release_helper.py stamp-version --ref "refs/tags/$RELEASE_TAG" --run-number 0
+
+      - name: Build and smoke-test macOS app
+        run: SECURE=1 bash ./scripts/build-macos.sh
+
+      - name: Verify packaged server readiness
+        run: |
+          uv run --frozen python - <<'PY'
+          import json, os, socket, subprocess, tempfile, time, urllib.request
+          from pathlib import Path
+          from stock_auto.desktop import ensure_user_config
+
+          evidence = Path("dist/macos-verification")
+          evidence.mkdir(parents=True, exist_ok=True)
+          report = {"status": "failed", "expected_version": os.environ["RELEASE_TAG"].removeprefix("v")}
+          with tempfile.TemporaryDirectory(prefix="stockauto-package-check-") as temporary:
+              root = Path(temporary)
+              config = ensure_user_config(app_dir=root / "config", pictures_dir=root / "pictures")
+              with socket.socket() as probe:
+                  probe.bind(("127.0.0.1", 0))
+                  port = probe.getsockname()[1]
+              executable = Path("dist/StockAuto.app/Contents/MacOS/StockAuto").resolve()
+              with (evidence / "app-process.log").open("w") as log:
+                  process = subprocess.Popen([
+                      str(executable), "--config", str(config), "--port", str(port),
+                      "--no-open", "--no-update",
+                  ], stdout=log, stderr=subprocess.STDOUT)
+                  try:
+                      deadline = time.monotonic() + 60
+                      while time.monotonic() < deadline:
+                          if process.poll() is not None:
+                              raise RuntimeError("Packaged application exited before readiness")
+                          try:
+                              with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/system/health", timeout=2) as response:
+                                  health = json.load(response)
+                          except (OSError, ValueError):
+                              time.sleep(0.5)
+                              continue
+                          if health.get("ready") is True and health.get("version") == report["expected_version"]:
+                              report.update(status="passed", confirmed_version=health["version"])
+                              break
+                          time.sleep(0.5)
+                      else:
+                          raise RuntimeError("Packaged application readiness/version check timed out")
+                  finally:
+                      process.terminate()
+                      try:
+                          process.wait(timeout=15)
+                      except subprocess.TimeoutExpired:
+                          process.kill()
+                          process.wait(timeout=5)
+                      (evidence / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report))
+          PY
+
+      - name: Retain macOS verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/macos-verification/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload verified macOS package to draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          pages = json.loads(subprocess.check_output([
+              "gh", "api", "--paginate", "--slurp",
+              "repos/heymuni-releases/stock/releases?per_page=100",
+          ], text=True))
+          release = next((r for page in pages for r in page if r["tag_name"] == os.environ["RELEASE_TAG"]), None)
+          if release is None or not release["draft"] or release["author"]["login"] != "github-actions[bot]":
+              raise SystemExit("Refusing to alter a published or non-bot release")
+          archive = Path("dist/StockAuto-macos-arm64.zip")
+          with archive.open("rb") as stream:
+              digest = hashlib.file_digest(stream, "sha256").hexdigest()
+          print(json.dumps({"name": archive.name, "sha256": digest, "size": archive.stat().st_size}))
+          subprocess.run([
+              "gh", "release", "upload", os.environ["RELEASE_TAG"], str(archive),
+              "--repo", "heymuni-releases/stock", "--clobber",
+          ], check=True)
+          PY
