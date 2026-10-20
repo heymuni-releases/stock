@@ -1,4 +1,4 @@
-name: Create Release
+name: Create Bot Draft Release
 on:
   workflow_dispatch:
     inputs:
@@ -26,12 +26,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Create Bot Release
+      - name: Create Bot Draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
           TITLE: ${{ inputs.title }}
           NOTES: ${{ inputs.notes }}
         run: |
+          set -euo pipefail
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /tmp/existing.json 2>/dev/null; then
+            python3 -c '
+          import json
+          data = json.load(open("/tmp/existing.json"))
+          if not data["draft"] or data["author"]["login"] != "github-actions[bot]":
+              raise SystemExit("Refusing to overwrite a published or non-bot release")
+          '
+            exit 0
+          fi
           echo "$NOTES" > /tmp/notes.md
-          gh release create "$TAG" --title "$TITLE" --notes-file /tmp/notes.md
+          gh release create "$TAG" --draft --title "$TITLE" --notes-file /tmp/notes.md

@@ -22,6 +22,7 @@ REQUIRED = {
     "StockAuto-windows-x64.zip",
     "StockAuto-macos-arm64.zip",
 }
+TAG_PATTERN = r"v[0-9]+(?:\.[0-9]+){2,3}(?:-(?:alpha|beta|rc)[0-9]+)?"
 
 
 def api(route: str, method: str = "GET", data: dict | None = None):
@@ -43,8 +44,8 @@ def main() -> None:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
-    if args.tag != "all" and not re.fullmatch(r"v[0-9]+(?:\.[0-9]+){2,3}", args.tag):
-        raise ValueError("Use 'all' or a stable numeric version tag")
+    if args.tag != "all" and not re.fullmatch(TAG_PATTERN, args.tag):
+        raise ValueError("Use 'all' or a numeric version tag with an optional prerelease suffix")
 
     repo = os.environ["GITHUB_REPOSITORY"]
     base = f"repos/{repo}"
@@ -56,16 +57,24 @@ def main() -> None:
     if not selected:
         raise ValueError("No matching releases")
     latest = api(f"{base}/releases/latest")["tag_name"]
-    selected.sort(key=lambda r: tuple(map(int, r["tag_name"].removeprefix("v").split("."))))
+    version_key = lambda tag: tuple(map(int, tag.removeprefix("v").split("-", 1)[0].split(".")))
+    if any(not re.fullmatch(TAG_PATTERN, r["tag_name"]) for r in selected):
+        raise ValueError("Unexpected release tag")
+    selected.sort(key=lambda r: version_key(r["tag_name"]))
+    # Explicitly selected drafts are the normal private CI handoff. The 'all'
+    # maintenance option must never publish somebody else's unfinished draft.
+    for release in selected:
+        if release["draft"] and args.tag == "all":
+            raise ValueError("Select a draft tag explicitly to publish it")
+        if release["draft"] and not release["prerelease"] and version_key(release["tag_name"]) > version_key(latest):
+            latest = release["tag_name"]
     cache = Path(tempfile.mkdtemp(prefix="release-republish-"))
 
     # Verify the complete original set before deleting or changing anything.
     for release in selected:
         tag = release["tag_name"]
-        if release.get("immutable") or release["draft"] or release["prerelease"]:
-            raise ValueError(f"Refusing immutable, draft or prerelease: {tag}")
-        if not re.fullmatch(r"v[0-9]+(?:\.[0-9]+){2,3}", tag):
-            raise ValueError("Unexpected release tag")
+        if release.get("immutable"):
+            raise ValueError(f"Refusing immutable release: {tag}")
         assets = release["assets"]
         if {a["name"] for a in assets} != REQUIRED or len(assets) != len(REQUIRED):
             raise ValueError(f"Unexpected asset set: {tag}")
@@ -107,6 +116,8 @@ def main() -> None:
         current = api(f"{base}/releases/tags/{tag}")
         if current["id"] != original["id"] or current.get("immutable"):
             raise ValueError(f"Release changed during verification: {tag}")
+        if any(current[key] != original[key] for key in ("name", "body", "draft", "prerelease")):
+            raise ValueError(f"Release details changed during verification: {tag}")
         original_assets = {a["name"]: (a["id"], a["digest"]) for a in original["assets"]}
         current_assets = {a["name"]: (a["id"], a["digest"]) for a in current["assets"]}
         if original_assets != current_assets:
@@ -117,7 +128,7 @@ def main() -> None:
             "name": original["name"],
             "body": original.get("body") or "",
             "draft": True,
-            "prerelease": False,
+            "prerelease": original["prerelease"],
         })
         if replacement["author"]["login"] != BOT:
             raise ValueError("Unexpected replacement author; leaving draft unpublished")
