@@ -11,13 +11,19 @@ on:
         description: Private source commit
         required: true
         type: string
+      runner:
+        description: Apple Silicon runner
+        required: true
+        type: choice
+        default: macos-15
+        options: [macos-15, macos-26]
 
 permissions:
   contents: write
 
 jobs:
   build-macos:
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 45
     env:
       SOURCE_ACCOUNT: ${{ secrets.SOURCE_ACCOUNT }}
