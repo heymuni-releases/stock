@@ -19,6 +19,8 @@ jobs:
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      SOURCE_ACCOUNT: ${{ secrets.SOURCE_ACCOUNT }}
     steps:
       - name: Check out source code
         uses: actions/checkout@v4
