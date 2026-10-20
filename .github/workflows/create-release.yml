@@ -33,15 +33,23 @@ jobs:
           TITLE: ${{ inputs.title }}
           NOTES: ${{ inputs.notes }}
         run: |
-          set -euo pipefail
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /tmp/existing.json 2>/dev/null; then
-            python3 -c '
-          import json
-          data = json.load(open("/tmp/existing.json"))
-          if not data["draft"] or data["author"]["login"] != "github-actions[bot]":
-              raise SystemExit("Refusing to overwrite a published or non-bot release")
-          '
-            exit 0
-          fi
-          echo "$NOTES" > /tmp/notes.md
-          gh release create "$TAG" --draft --title "$TITLE" --notes-file /tmp/notes.md
+          python3 - <<'PY'
+          import json, os, subprocess, tempfile
+          pages = json.loads(subprocess.check_output([
+              "gh", "api", "--paginate", "--slurp",
+              f"repos/{os.environ['GITHUB_REPOSITORY']}/releases?per_page=100",
+          ], text=True))
+          existing = next((r for page in pages for r in page if r["tag_name"] == os.environ["TAG"]), None)
+          if existing is not None:
+              if not existing["draft"] or existing["author"]["login"] != "github-actions[bot]":
+                  raise SystemExit("Refusing to overwrite a published or non-bot release")
+              raise SystemExit(0)
+          with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as notes:
+              notes.write(os.environ["NOTES"])
+              notes.flush()
+              subprocess.run([
+                  "gh", "release", "create", os.environ["TAG"], "--draft",
+                  "--repo", os.environ["GITHUB_REPOSITORY"],
+                  "--title", os.environ["TITLE"], "--notes-file", notes.name,
+              ], check=True)
+          PY

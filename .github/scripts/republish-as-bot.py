@@ -113,7 +113,7 @@ def main() -> None:
 
     for original in selected:
         tag = original["tag_name"]
-        current = api(f"{base}/releases/tags/{tag}")
+        current = api(f"{base}/releases/{original['id']}")
         if current["id"] != original["id"] or current.get("immutable"):
             raise ValueError(f"Release changed during verification: {tag}")
         if any(current[key] != original[key] for key in ("name", "body", "draft", "prerelease")):
