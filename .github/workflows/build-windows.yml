@@ -6,7 +6,11 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.1.0.61"
+        default: "v0.1.0.63"
+      source_ref:
+        description: "Private source commit or branch"
+        required: true
+        default: "main"
 
 permissions:
   contents: write
@@ -21,7 +25,8 @@ jobs:
         with:
           repository: ${{ secrets.SOURCE_REPOSITORY }}
           token: ${{ secrets.SOURCE_ACCESS_TOKEN }}
-          ref: main
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -39,6 +44,15 @@ jobs:
       - name: Build and smoke-test portable app
         shell: pwsh
         run: ./scripts/build-windows.ps1 -Secure
+
+      - name: Retain update verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-update-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/update-verification/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Windows asset to Release
         shell: pwsh
