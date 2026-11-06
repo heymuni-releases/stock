@@ -27,11 +27,14 @@ StockAuto 최신 버전 설치 파일 다운로드 저장소입니다.
 3. 폴더 안의 `StockAuto.exe`를 실행합니다.
 
 ### macOS (최초 1회 실행 시 주의사항)
+
 1. 다운로드한 `StockAuto-macos-arm64.zip`을 더블클릭하여 압축을 해제하고 `StockAuto.app`을 **응용 프로그램(/Applications)** 폴더로 이동합니다.
-2. 브라우저에서 최초 다운로드 시 macOS Gatekeeper 보안 확인이 뜰 수 있습니다.
-   - `StockAuto.app` 아이콘을 **Control-클릭(우클릭) → 열기(Open)**를 누르거나,
-   - 터미널에서 아래 명령어를 1회 실행한 뒤 앱을 열면 정상 실행됩니다:
-     ```bash
-     xattr -cr /Applications/StockAuto.app
-     ```
-3. 최초 실행 이후에는 자동 업데이트 시 격리 속성이 자동으로 처리되므로 추가 경고 없이 바로 업데이트됩니다.
+2. `StockAuto.app`을 실행했을 때 “Apple은 악성 코드가 없음을 확인할 수 없습니다”라는 경고가 나오면 경고 창을 닫습니다.
+3. [보안 설정 바로가기 ZIP 다운로드](https://github.com/heymuni-releases/stock/raw/refs/heads/main/downloads/macos-security-shortcut.zip)를 눌러 압축을 풀고, **`보안 설정 열기.alias`를 더블클릭**합니다. 브라우저를 거치지 않고 **개인정보 보호 및 보안** 설정 화면이 열립니다. 앱 ZIP에 같은 바로가기가 들어 있다면 해당 파일을 사용해도 됩니다.
+4. 화면 아래쪽 **보안 → StockAuto.app 차단 안내 옆의 그래도 열기(Open Anyway)**를 누릅니다. 요청하면 Mac 로그인 암호 또는 Touch ID로 승인하고, 확인 창에서 **열기**를 누릅니다.
+
+바로가기가 열리지 않으면 **Apple 메뉴 → 시스템 설정 → 개인정보 보호 및 보안**으로 직접 이동하세요. `그래도 열기`가 보이지 않으면 앱 실행을 다시 시도한 뒤 설정을 확인하세요.
+
+현재 앱은 Apple 공증을 받지 않아 최초 다운로드 시 이 확인이 필요할 수 있습니다. macOS 15 이상에서는 우클릭 → `열기`만으로 차단을 해제할 수 없습니다. 바로가기는 설정 화면만 열며, 앱 실행은 사용자가 직접 승인해야 합니다.
+
+자세한 내용은 [Apple 공식 실행 안내](https://support.apple.com/ko-kr/guide/mac-help/mh40617/mac)를 참고하세요.
