@@ -6,17 +6,17 @@ on:
         description: "Release tag"
         required: true
         type: string
-        default: "v0.1.0.61"
+        default: "v0.1.0.102"
       title:
         description: "Release title"
         required: true
         type: string
-        default: "StockAuto v0.1.0.61"
+        default: "heymuni auto v0.1.0.102"
       notes:
         description: "Release notes"
         required: true
         type: string
-        default: "StockAuto 최신 빌드"
+        default: "heymuni auto 최신 빌드"
 
 permissions:
   contents: write
