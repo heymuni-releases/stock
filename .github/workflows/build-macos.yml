@@ -68,10 +68,11 @@ jobs:
       - name: Build and smoke-test macOS app
         run: SECURE=1 bash ./scripts/build-macos.sh
 
-      - name: Verify packaged server readiness
+      - name: Verify packaged server readiness and shutdown
         run: |
           uv run --frozen python - <<'PY'
           import json, os, socket, subprocess, tempfile, time, urllib.request
+          import httpx
           from pathlib import Path
           from stock_auto.desktop import ensure_user_config
 
@@ -107,6 +108,15 @@ jobs:
                           time.sleep(0.5)
                       else:
                           raise RuntimeError("Packaged application readiness/version check timed out")
+                      with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=5) as client:
+                          client.get("/").raise_for_status()
+                          response = client.post("/api/system/shutdown", headers={
+                              "X-CSRF-Token": client.cookies["stock_csrf"],
+                          })
+                          response.raise_for_status()
+                      if process.wait(timeout=15) != 0:
+                          raise RuntimeError("Packaged application did not exit cleanly")
+                      report["shutdown"] = "passed"
                   finally:
                       process.terminate()
                       try:
